@@ -1,94 +1,270 @@
-How to create a RoR App with two types of admin (Admin and SuperAdmin)
-
 Create new Rails app with mysql database, skip test cases
 
 rails new admin\_demo -T -d=mysql
+
 Add required gems devise
+
 gem 'devise'
-gem 'inherited_resources'
+gem 'inherited\_resources'
 group :development, :test do
   gem 'debugger'
 end
 
-Install device with Admin name
-rails generate devise Admin
-rails g migration add_column_to_admin type:string first_name:string last_name:string
+Run bundle to install the gems
+
+bundle
+
+Bootstrap assets
+Rename application.css to application.css.sass
+Run following command to import bootstrap css components explicitly
+
+cp $(bundle show bootstrap-sass)/vendor/assets/stylesheets/bootstrap.scss \
+ app/assets/stylesheets/bootstrap-custom.scss
+
+change content of application.css.sass to
+
+//= require_self
+//= require bootstrap-custom
+
+Generate separate layout for admins
+We have used a separate layout for SuperAdmin and Admin.
+Please note: In this example we are going to use SuperAdmin and Restaurant as resource names.
+
+touch app/views/layouts/super\_admin.html.erb
+touch app/views/layouts/restaurants.html.erb
+
+Now generate your admin model
+In this example we have used Single Table Inheritance, i.e. same admin model for both admins. Inherited model names are SuperAdmin and Restaurant
+
+rails g model Admin type:string first_name:string last_name:string
+
+PS: type column is added for STI
+
+Generate device configuration file
+
 rails generate devise:install
 
-Create app/models/super_admin.rb && app/models/restaurant.rb
-class SuperAdmin < Admin
-end
+This will generate devise.rb configuration file in config/initializers and devise.en.yml in config/locales
+
+Add host name to your environment files #config\environments\development.rb
+
+config.action_mailer.default_url_options = { :host => 'localhost:3000' }
+
+#config\environments\test.rb
+
+config.action_mailer.default_url_options = { :host => 'localhost:3000' }
+
+#config\environments\production.rb
+
+config.action_mailer.default_url_options = { :host => 'ACTUAL PRODUCTION HOST' }
+
+Generate devise migration
+
+rails generate devise Admin
+
+This will generate change migration which will add columns in admin table.
+This will also add devise_for :admins in routes.rb. Delete this line as we will be using devise for SuperAdmin and Restaurant model.
+We will create these models in next step.
+Above command will also add following lines in admin model (admin.rb).
+
+#Include default devise modules. Others available are: #:confirmable, :lockable, :timeoutable and :omniauthable
+
+devise :database_authenticatable, :registerable,
+:recoverable, :rememberable, :trackable, :validatable
+
+Remove these lines as well from admin.rb
+
+Create models for SuperAdmin and Admin
+Creating super_admin and restaurant model
+
+touch app/models/super_admin.rb
+touch app/models/restaurant.rb
+
+Run migration
+Check migration and comment/uncomment columns as per your applications requirement.
+We wanted confirmable module so we have uncommented following lines from the migration file
+
+## Confirmable
+
+t.string   :confirmation_token
+t.datetime :confirmed_at
+t.datetime :confirmation_sent_at
+t.string   :unconfirmed_email
+.
+.
+.
+.
+add_index :admins, :confirmation_token,   :unique => true
+
+Run migration using rake db:migrate
+
+Include devise modules in Admin inherited models
+Also inherit these models from Admin instead of ActiveRecord::Base
+restaurant.rb contents
+
 class Restaurant < Admin
+
+#Include default devise modules. Others available are: #:confirmable, :lockable, :timeoutable and :omniauthable
+
+devise :database\_authenticatable, :registerable, :confirmable,
+     :recoverable, :rememberable, :trackable, :validatable
 end
-Note: This model is creating for Single table inheritance with Admin model
-Now fire the query for superadmin
-SuperAdmin.create(first_name: "Super", last_name: "Admin", email: "superadmin@example.com", password: "superadmin123")
-Now fire the query for restaurant
-Restaurant.create(first_name: "Restaurant", last_name: "Admin", email: "restaurant@example.com", password: "restaurant123")
+super_admin.rb contents
 
 
-After this when we will fire the query in console
-Admin.all
-#<ActiveRecord::Relation [#<SuperAdmin id: 1, email: "superadmin@example.com", created_at: "2017-01-17 06:26:02", updated_at: "2017-01-17 07:11:02", first_name: "Super", last_name: "Admin">, #<Restaurant id: 2, email: "restaurant@example.com", created_at: "2017-01-17 06:26:20", updated_at: "2017-01-17 07:10:23", first_name: "Restaurant", last_name: "Admin">]>
-Admin.last
-#<Restaurant id: 2, email: "restaurant@example.com", created_at: "2017-01-17 06:26:20", updated_at: "2017-01-17 07:10:23", first_name: "Restaurant", last_name: "Admin"> 
+class SuperAdmin < Admin
 
-Admin.last.type
+#Include default devise modules. Others available are:
+#:confirmable, :lockable, :timeoutable and :omniauthable
 
-  => "Restaurant" 
+devise :database_authenticatable, :recoverable,
+    :rememberable, :trackable, :validatable
+end
 
-Admin.first
- => #<SuperAdmin id: 1, email: "superadmin@example.com", created_at: "2017-01-17 06:26:02", updated_at: "2017-01-17 07:11:02", first_name: "Super", last_name: "Admin"> 
+Generating devise routes
 
-Admin.first.type
+    devise_for :restaurants
+devise_for :super_admins
+This will create routes like:
+/restaurants/sign_in
+/super_admins/sign_in
+super_admins 
 
-   => "SuperAdmin" 
+We’ve changed the path name for super_admins as follows:
+It’s as per personal choice if you want to change any of them, or want to keep it as it is.
+If you want to change it, you can change it as follows.
 
-Note:: Because this is STI  relation 
+devise\_for :restaurants
+devise\_for :super\_admins, path: "supe\r_admin"
 
+It will generate routes like this:
 
-Create a controller 
+/restaurants/sign_in
+/super_admin/sign_in
 
+Create dashboard
+We need a page for our apps root url. We have created dashboard controller in this app.
+
+rails g controller dashboard
+
+We have added index action in this controller
+
+class DashboardController < ApplicationController
+
+  def index
+  end
+
+end
+
+Create view file for controller
+
+$ cat > app/views/dashboard/index.html.erb
+Hi
+This is Home page of your app
+
+#Press 'Control + D' to tell the Linux OS that what is typed is to be stored into the file
+
+Now add this dashboard#index action as root url in routes.rb
+
+root 'dashboard#index'
+
+Adding default super admin account for login
+Add this in db/seeds.rb
+
+if SuperAdmin.count == 0
+  SuperAdmin.create(first_name: "Super", last_name: "Admin", email: "superadmin@example.com", password: "superadmin123")
+  puts "SuperAdmin account created\nCredentials: superadmin@example.com/superadmin123"
+else
+  puts "SuperAdmin account already exists, skipping SuperAdmin creation"
+end
+
+Run seed file using
+
+rake db:seed
+
+Test account for restaurant
+Following lines can be executed in console to create a test account for restaurant model.
+
+if Restaurant.count == 0
+  Restaurant.create(first_name: "Restaurant", last_name: "Admin", email: "restaurant@example.com", password: "restaurant123")
+  puts "Restaurant account created\nCredentials: restaurant@example.com/restaurant123"
+end 
+
+# optional - if you want a restaurant account to test your changes
+
+Creating parent controller for our super_admin and restaurant modules
+It is better if we create a super_admin and restaurants controller and inherit all controllers of super_admin module from super_admin_controller and restaurant modules from restaurants_controller. This way we have to apply our helper methods (authenticate_restaurant and authenticate_super_admin) in these controllers only. Same applies for layout as well.
+
+$ cat > app/controllers/super_admin_controller.rb
 class SuperAdminController < ApplicationController
+  layout 'super_admin'
   before_action :authenticate_super_admin!
 end  
-Note:  authenticate_super_admin! Will check the authentication with  super_admin model data.  (example: with email and password)
 
+# After typing end press 'Control + D' to save contents to file
+
+$ cat > app/controllers/restaurants_controller.rb
 class RestaurantsController < ApplicationController
+  layout 'restaurants'
   before_action :authenticate_restaurant!
 end
-Note:  authenticate_super_admin! Will check the authentication with  restaurant model data. (example: with email and password)
 
 We need a dashboard for both admins(restaurants and super_admin), lets create one for each
-Here we have kept every controller related to SuperAdmin in super_admin namespace and restarant's controllers in restaurants
+Here we have kept every controller related to SuperAdmin in super_admin namespace and restarant's controllers in restaurants namespace.
 
-app/controllers/super_admin/dashboard_controller.rb
+$ mkdir app/controllers/super_admin
+cat > app/controllers/super_admin/dashboard_controller.rb
 class SuperAdmin::DashboardController < SuperAdminController
   def index
   end
 end
-Create view app/views/super_admin/dashboard/index.html.erb
 
+# press 'Control + D' to save contents to file
 
-Now in routes.rb
+$ mkdir app/views/super_admin
+$ mkdir app/views/super_admin/dashboard
+$ cat > app/views/super_admin/dashboard/index.html.erb
 
-devise_for :admins
+This is SuperAdmin dashboard
+# press 'Control + D' to save contents to file
+
+$ mkdir app/controllers/restaurants
+$ cat > app/controllers/restaurants/dashboard_controller.rb
+class Restaurants::DashboardController < RestaurantsController
+  def index
+  end
+end
+
+# press 'Control + D' to save contents to file
+
+$ mkdir app/views/restaurants
+$ mkdir app/views/restaurants/dashboard
+$ cat > app/views/restaurants/dashboard/index.html.erb
+
+This is Restaurant dashboard
+# press 'Control + D' to save contents to file
+
+Also add dashboard resource in super_admin and restaurants namespace in routes.rb
+
+namespace :restaurants do
+  resources :dashboard, only: [:index]
+end
+
+namespace :super_admin do
+  resources :dashboard, only: [:index]
+end
+
+Now override sessions controller
+Need to override sessions controller to set custom path after signing in and signing out. modify routes.rb
+
 devise_for :restaurants, controllers: { sessions: "restaurants/sessions" }
-  devise_for :super_admins, path: "super_admin", controllers: { sessions: "super_admin/sessions" }
-
-  namespace :restaurants do
-  resources :dashboard, only: [:index]
-  end
-
-  namespace :super_admin do
-  resources :dashboard, only: [:index]
-  end
+devise_for :super_admins, path: "super_admin", controllers: { sessions: "super_admin/sessions" }
 
 Create sessions controllers
-touch app/controllers/restaurants/sessions_controller.rb
+cat > app/controllers/restaurants/sessions_controller.rb
 
 class Restaurants::SessionsController < Devise::SessionsController
-
+  layout "restaurants"
 
   private
 def after_sign_in_path_for(resource)
@@ -100,12 +276,12 @@ def after_sign_out_path_for(resource_or_scope)
 end
 end
 
+# press 'Control + D' to save contents to file
 
-
-touch app/controllers/superadmin/sessionscontroller.rb
+cat > app/controllers/superadmin/sessionscontroller.rb
 
 class SuperAdmin::SessionsController < Devise::SessionsController
-
+  layout "super_admin"
 
   private
 def after_sign_in_path_for(resource)
@@ -117,20 +293,30 @@ def after_sign_out_path_for(resource_or_scope)
 end
 end
 
-
-inside config/initializers/devise.rb
-
-add `config.scoped_views = true` 
-
-
-And generate views 
-$ rails generate devise:views super_admin $ rails generate devise:views restaur
+# press 'Control + D' to save contents to file
 
 Start server and check sign in
+
 rails s
 
-Now you will be able to login using super_admin and restaurant account and will be able to see your dashboard 
-URL: http://localhost:3000/super_admin/sign_in http://localhost:3000/restaurants/sign_in 
+Now you will be able to login using super_admin and restaurant account and will be able to see your dashboard
+URL: http://localhost:3000/super_admin/sign_in http://localhost:3000/restaurants/sign_in
 
-ants
+We need link for logout
 
+layouts/super_admin.html.erb
+
+Add following link in layout file for super_admin `` <%- if current_super_admin %> <%= link_to "Logout", destroy_super_admin_session_path, method: "DELETE" %> <% end %>
+**layouts/restaurants.html.erb**
+And for restaurant, add this link
+<%- if current_restaurant %> <%= link_to "Logout", destroy_restaurant_session_path, method: "DELETE" %> <% end %>
+
+######You can use my layouts files from this branch(bootsrap31) if you are using bootstrap 3.1.0 in your app
+
+#### To customize devise views
+inside **config/initializers/devise.rb**
+< br >
+add `config.scoped_views = true`
+< br >
+And generate views
+$ rails generate devise:views super_admin $ rails generate devise:views restaurants
