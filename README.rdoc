@@ -1,0 +1,136 @@
+How to create a RoR App with two types of admin (Admin and SuperAdmin)
+
+Create new Rails app with mysql database, skip test cases
+
+rails new admin\_demo -T -d=mysql
+Add required gems devise
+gem 'devise'
+gem 'inherited_resources'
+group :development, :test do
+  gem 'debugger'
+end
+
+Install device with Admin name
+rails generate devise Admin
+rails g migration add_column_to_admin type:string first_name:string last_name:string
+rails generate devise:install
+
+Create app/models/super_admin.rb && app/models/restaurant.rb
+class SuperAdmin < Admin
+end
+class Restaurant < Admin
+end
+Note: This model is creating for Single table inheritance with Admin model
+Now fire the query for superadmin
+SuperAdmin.create(first_name: "Super", last_name: "Admin", email: "superadmin@example.com", password: "superadmin123")
+Now fire the query for restaurant
+Restaurant.create(first_name: "Restaurant", last_name: "Admin", email: "restaurant@example.com", password: "restaurant123")
+
+
+After this when we will fire the query in console
+Admin.all
+#<ActiveRecord::Relation [#<SuperAdmin id: 1, email: "superadmin@example.com", created_at: "2017-01-17 06:26:02", updated_at: "2017-01-17 07:11:02", first_name: "Super", last_name: "Admin">, #<Restaurant id: 2, email: "restaurant@example.com", created_at: "2017-01-17 06:26:20", updated_at: "2017-01-17 07:10:23", first_name: "Restaurant", last_name: "Admin">]>
+Admin.last
+#<Restaurant id: 2, email: "restaurant@example.com", created_at: "2017-01-17 06:26:20", updated_at: "2017-01-17 07:10:23", first_name: "Restaurant", last_name: "Admin"> 
+
+Admin.last.type
+
+  => "Restaurant" 
+
+Admin.first
+ => #<SuperAdmin id: 1, email: "superadmin@example.com", created_at: "2017-01-17 06:26:02", updated_at: "2017-01-17 07:11:02", first_name: "Super", last_name: "Admin"> 
+
+Admin.first.type
+
+   => "SuperAdmin" 
+
+Note:: Because this is STI  relation 
+
+
+Create a controller 
+
+class SuperAdminController < ApplicationController
+  before_action :authenticate_super_admin!
+end  
+Note:  authenticate_super_admin! Will check the authentication with  super_admin model data.  (example: with email and password)
+
+class RestaurantsController < ApplicationController
+  before_action :authenticate_restaurant!
+end
+Note:  authenticate_super_admin! Will check the authentication with  restaurant model data. (example: with email and password)
+
+We need a dashboard for both admins(restaurants and super_admin), lets create one for each
+Here we have kept every controller related to SuperAdmin in super_admin namespace and restarant's controllers in restaurants
+
+app/controllers/super_admin/dashboard_controller.rb
+class SuperAdmin::DashboardController < SuperAdminController
+  def index
+  end
+end
+Create view app/views/super_admin/dashboard/index.html.erb
+
+
+Now in routes.rb
+
+devise_for :admins
+devise_for :restaurants, controllers: { sessions: "restaurants/sessions" }
+  devise_for :super_admins, path: "super_admin", controllers: { sessions: "super_admin/sessions" }
+
+  namespace :restaurants do
+  resources :dashboard, only: [:index]
+  end
+
+  namespace :super_admin do
+  resources :dashboard, only: [:index]
+  end
+
+Create sessions controllers
+touch app/controllers/restaurants/sessions_controller.rb
+
+class Restaurants::SessionsController < Devise::SessionsController
+
+
+  private
+def after_sign_in_path_for(resource)
+  session[:restaurant_return_to].blank? ? restaurants_dashboard_index_path : session[:restaurant_return_to]
+end
+
+def after_sign_out_path_for(resource_or_scope)
+  new_restaurant_session_path
+end
+end
+
+
+
+touch app/controllers/superadmin/sessionscontroller.rb
+
+class SuperAdmin::SessionsController < Devise::SessionsController
+
+
+  private
+def after_sign_in_path_for(resource)
+  session[:super_admin_return_to].blank? ? super_admin_dashboard_index_path : session[:super_admin_return_to]
+end
+
+def after_sign_out_path_for(resource_or_scope)
+  new_super_admin_session_path
+end
+end
+
+
+inside config/initializers/devise.rb
+
+add `config.scoped_views = true` 
+
+
+And generate views 
+$ rails generate devise:views super_admin $ rails generate devise:views restaur
+
+Start server and check sign in
+rails s
+
+Now you will be able to login using super_admin and restaurant account and will be able to see your dashboard 
+URL: http://localhost:3000/super_admin/sign_in http://localhost:3000/restaurants/sign_in 
+
+ants
+

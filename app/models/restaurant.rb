@@ -1,0 +1,2 @@
+class Restaurant < Admin
+end
